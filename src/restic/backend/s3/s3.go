@@ -17,10 +17,11 @@ const connLimit = 10
 
 // s3 is a backend which stores the data on an S3 endpoint.
 type s3 struct {
-	client     *minio.Client
-	connChan   chan struct{}
-	bucketname string
-	prefix     string
+	client      *minio.Client
+	connChan    chan struct{}
+	bucketname  string
+	prefix      string
+	localLayout bool
 }
 
 // Open opens the S3 backend at bucket and region. The bucket is created if it
@@ -33,7 +34,7 @@ func Open(cfg Config) (backend.Backend, error) {
 		return nil, err
 	}
 
-	be := &s3{client: client, bucketname: cfg.Bucket, prefix: cfg.Prefix}
+	be := &s3{client: client, bucketname: cfg.Bucket, prefix: cfg.Prefix, localLayout: cfg.LocalLayout}
 	be.createConnections()
 
 	if err := client.BucketExists(cfg.Bucket); err != nil {
@@ -54,7 +55,39 @@ func (be *s3) s3path(t backend.Type, name string) string {
 	if t == backend.Config {
 		return path.Join(be.prefix, string(t))
 	}
+	if be.localLayout == true {
+		// use the local compatible repository layout
+		return path.Join(be.prefix, dirname(t, name), name)
+	}
+	// use the standard s3 repository layout
 	return path.Join(be.prefix, string(t), name)
+}
+
+// Construct the directory name for a given Type and file name using
+// the path names defined in backend.Paths.
+//
+// This will also use the first two characters of the blob name as a
+// directory prefix to partition blobs into smaller directories. This
+// is similar to the way local and sftp repositories are handling
+// blob filenames.
+func dirname(t backend.Type, name string) string {
+	var n string
+	switch t {
+	case backend.Data:
+		n = backend.Paths.Data
+		if len(name) > 2 {
+			n = path.Join(n, name[:2])
+		}
+	case backend.Snapshot:
+		n = backend.Paths.Snapshots
+	case backend.Index:
+		n = backend.Paths.Index
+	case backend.Lock:
+		n = backend.Paths.Locks
+	case backend.Key:
+		n = backend.Paths.Keys
+	}
+	return n
 }
 
 func (be *s3) createConnections() {

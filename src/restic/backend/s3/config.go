@@ -15,6 +15,7 @@ type Config struct {
 	KeyID, Secret string
 	Bucket        string
 	Prefix        string
+	LocalLayout   bool
 }
 
 const defaultPrefix = "restic"
@@ -24,7 +25,6 @@ const defaultPrefix = "restic"
 // s3:host:bucketname/prefix. The host can also be a valid s3 region
 // name. If no prefix is given the prefix "restic" will be used.
 func ParseConfig(s string) (interface{}, error) {
-	s = strings.TrimRight(s, "/") // remove trailing slashes
 	switch {
 	case strings.HasPrefix(s, "s3:http"):
 		// assume that a URL has been specified, parse it and
@@ -40,7 +40,7 @@ func ParseConfig(s string) (interface{}, error) {
 		}
 
 		path := strings.SplitN(url.Path[1:], "/", 2)
-		return NewConfig(url.Host, path, url.Scheme == "http")
+		return NewConfig(url.Host, path, url.Scheme == "http", false)
 	case strings.HasPrefix(s, "s3://"):
 		s = s[5:]
 	case strings.HasPrefix(s, "s3:"):
@@ -51,13 +51,13 @@ func ParseConfig(s string) (interface{}, error) {
 	// use the first entry of the path as the endpoint and the
 	// remainder as bucket name and prefix
 	path := strings.SplitN(s, "/", 3)
-	return NewConfig(path[0], path[1:], false)
+	return NewConfig(path[0], path[1:], false, false)
 }
 
 // NewConfig creates a Config at the specified endpoint. The Bucket is
 // the first entry in p and the remaining entries will be used as the
 // object name prefix.
-func NewConfig(endpoint string, bucketPrefix []string, useHTTP bool) (interface{}, error) {
+func NewConfig(endpoint string, bucketPrefix []string, useHTTP bool, localLayout bool) (interface{}, error) {
 	var prefix string
 	switch {
 	case len(bucketPrefix) < 1:
@@ -68,9 +68,10 @@ func NewConfig(endpoint string, bucketPrefix []string, useHTTP bool) (interface{
 		prefix = path.Clean(bucketPrefix[1])
 	}
 	return Config{
-		Endpoint: endpoint,
-		UseHTTP:  useHTTP,
-		Bucket:   bucketPrefix[0],
-		Prefix:   prefix,
+		Endpoint:    endpoint,
+		UseHTTP:     useHTTP,
+		Bucket:      bucketPrefix[0],
+		Prefix:      prefix,
+		LocalLayout: localLayout,
 	}, nil
 }
